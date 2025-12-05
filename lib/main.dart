@@ -4,6 +4,7 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 import 'package:flutter/services.dart';
 import 'dart:io';
@@ -121,6 +122,45 @@ class _WebViewScreenState extends State<WebViewScreen> {
   bool _isLoading = true;
   bool _isInitialLoad = true;
   static const platform = MethodChannel('com.example.gbsoluxmobile/file');
+  bool _isConnected = true;
+  late StreamSubscription<List<ConnectivityResult>> _connectivitySubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _initConnectivity();
+  }
+
+  @override
+  void dispose() {
+    _connectivitySubscription.cancel();
+    super.dispose();
+  }
+
+  Future<void> _initConnectivity() async {
+    final connectivity = Connectivity();
+
+    // Check initial connectivity
+    final result = await connectivity.checkConnectivity();
+    _updateConnectionStatus(result);
+
+    // Listen for connectivity changes
+    _connectivitySubscription = connectivity.onConnectivityChanged.listen(
+      _updateConnectionStatus,
+    );
+  }
+
+  void _updateConnectionStatus(List<ConnectivityResult> results) {
+    final wasConnected = _isConnected;
+    setState(() {
+      _isConnected = results.any((result) => result != ConnectivityResult.none);
+    });
+
+    // If connection was restored, reload the WebView
+    if (!wasConnected && _isConnected && _webViewController != null) {
+      _webViewController!.loadUrl(urlRequest: URLRequest(url: WebUri(_url)));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -128,76 +168,121 @@ class _WebViewScreenState extends State<WebViewScreen> {
       body: SafeArea(
         child: Stack(
           children: [
-            InAppWebView(
-              initialUrlRequest: URLRequest(url: WebUri(_url)),
-              initialOptions: InAppWebViewGroupOptions(
-                crossPlatform: InAppWebViewOptions(
-                  javaScriptEnabled: true,
-                  useShouldOverrideUrlLoading: true,
-                  useOnDownloadStart: true,
-                  useOnLoadResource: true,
-                  cacheEnabled: true,
-                  clearCache: false,
+            if (_isConnected)
+              InAppWebView(
+                initialUrlRequest: URLRequest(url: WebUri(_url)),
+                initialOptions: InAppWebViewGroupOptions(
+                  crossPlatform: InAppWebViewOptions(
+                    javaScriptEnabled: true,
+                    useShouldOverrideUrlLoading: true,
+                    useOnDownloadStart: true,
+                    useOnLoadResource: true,
+                    cacheEnabled: true,
+                    clearCache: false,
+                  ),
+                  android: AndroidInAppWebViewOptions(
+                    useHybridComposition: true,
+                    allowFileAccess: true,
+                    allowContentAccess: true,
+                  ),
                 ),
-                android: AndroidInAppWebViewOptions(
-                  useHybridComposition: true,
-                  allowFileAccess: true,
-                  allowContentAccess: true,
+                onWebViewCreated: (controller) {
+                  _webViewController = controller;
+                  // Sync cookies if needed
+                  _syncCookies();
+                  // Inject JavaScript for file uploads
+                  _injectFileUploadScript();
+                },
+                onLoadStart: (controller, url) {
+                  if (_isInitialLoad) {
+                    setState(() {
+                      _isLoading = true;
+                    });
+                  }
+                },
+                onLoadStop: (controller, url) {
+                  setState(() {
+                    _isLoading = false;
+                    _isInitialLoad = false;
+                  });
+                },
+                onDownloadStartRequest: (controller, downloadStartRequest) async {
+                  // Handle downloads
+                  await _handleDownload(downloadStartRequest);
+                },
+                onConsoleMessage: (controller, consoleMessage) {
+                  print("WebView Console: ${consoleMessage.message}");
+                },
+                onReceivedServerTrustAuthRequest: (controller, challenge) async {
+                  return ServerTrustAuthResponse(action: ServerTrustAuthResponseAction.PROCEED);
+                },
+                shouldOverrideUrlLoading: (controller, navigationAction) async {
+                  var uri = navigationAction.request.url!;
+
+                  // Intercept file downloads and previews to handle them within the app
+                  if (_shouldInterceptUrl(uri.toString())) {
+                    try {
+                      await platform.invokeMethod('downloadFile', {
+                        'url': uri.toString(),
+                        'filename': _extractFilename(uri.toString()),
+                        'mimeType': _guessMimeType(uri.toString()),
+                      });
+                      return NavigationActionPolicy.CANCEL;
+                    } on PlatformException catch (e) {
+                      print("Failed to handle file: '${e.message}'.");
+                      return NavigationActionPolicy.ALLOW;
+                    }
+                  }
+
+                  // Handle external links or OAuth if needed
+                  return NavigationActionPolicy.ALLOW;
+                },
+              )
+            else
+              Container(
+                color: Colors.white,
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.wifi_off,
+                        size: 80,
+                        color: Colors.grey,
+                      ),
+                      const SizedBox(height: 20),
+                      const Text(
+                        'Pas de connexion internet',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 10),
+                      const Text(
+                        'Vous ne pouvez pas utiliser l\'application.\nVeuillez vous reconnecter au réseau ou trouver une connexion internet.',
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: Colors.grey,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 30),
+                      ElevatedButton(
+                        onPressed: () async {
+                          final connectivity = Connectivity();
+                          final result = await connectivity.checkConnectivity();
+                          _updateConnectionStatus(result);
+                        },
+                        child: const Text('Réessayer'),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              onWebViewCreated: (controller) {
-                _webViewController = controller;
-                // Sync cookies if needed
-                _syncCookies();
-                // Inject JavaScript for file uploads
-                _injectFileUploadScript();
-              },
-              onLoadStart: (controller, url) {
-                if (_isInitialLoad) {
-                  setState(() {
-                    _isLoading = true;
-                  });
-                }
-              },
-              onLoadStop: (controller, url) {
-                setState(() {
-                  _isLoading = false;
-                  _isInitialLoad = false;
-                });
-              },
-              onDownloadStartRequest: (controller, downloadStartRequest) async {
-                // Handle downloads
-                await _handleDownload(downloadStartRequest);
-              },
-              onConsoleMessage: (controller, consoleMessage) {
-                print("WebView Console: ${consoleMessage.message}");
-              },
-              onReceivedServerTrustAuthRequest: (controller, challenge) async {
-                return ServerTrustAuthResponse(action: ServerTrustAuthResponseAction.PROCEED);
-              },
-              shouldOverrideUrlLoading: (controller, navigationAction) async {
-                var uri = navigationAction.request.url!;
-
-                // Intercept file downloads and previews to handle them within the app
-                if (_shouldInterceptUrl(uri.toString())) {
-                  try {
-                    await platform.invokeMethod('downloadFile', {
-                      'url': uri.toString(),
-                      'filename': _extractFilename(uri.toString()),
-                      'mimeType': _guessMimeType(uri.toString()),
-                    });
-                    return NavigationActionPolicy.CANCEL;
-                  } on PlatformException catch (e) {
-                    print("Failed to handle file: '${e.message}'.");
-                    return NavigationActionPolicy.ALLOW;
-                  }
-                }
-
-                // Handle external links or OAuth if needed
-                return NavigationActionPolicy.ALLOW;
-              },
-            ),
-            if (_isLoading)
+            if (_isLoading && _isConnected)
               Container(
                 color: Colors.white,
                 child: const Center(

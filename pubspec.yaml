@@ -50,6 +50,9 @@ dependencies:
   # Lottie for splash screen animations
   lottie: ^3.0.0
 
+  # Connectivity checking
+  connectivity_plus: ^6.0.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
