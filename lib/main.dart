@@ -1,125 +1,372 @@
+
 import 'package:flutter/material.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
+import 'package:flutter/services.dart';
+import 'dart:io';
+import 'dart:async';
 
 void main() {
+  // Configure status bar to be transparent
+  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: Brightness.dark,
+    statusBarBrightness: Brightness.light,
+  ));
+
   runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'GBSolux Mobile',
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: const SplashScreen(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
+class SplashScreen extends StatefulWidget {
+  const SplashScreen({super.key});
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
+  bool _isFirstLaunch = true;
+  late AnimationController _animationController;
+  late Animation<double> _rotationAnimation;
 
-  void _incrementCounter() {
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      duration: const Duration(seconds: 2),
+      vsync: this,
+    )..repeat();
+    _rotationAnimation = Tween<double>(begin: 0.0, end: 2 * 3.14159).animate(_animationController);
+    _checkFirstLaunch();
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _checkFirstLaunch() async {
+    const storage = FlutterSecureStorage();
+    final firstLaunch = await storage.read(key: 'first_launch');
     setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+      _isFirstLaunch = firstLaunch == null;
     });
+
+    // Simulate loading time or preload WebView
+    await Future.delayed(Duration(seconds: _isFirstLaunch ? 3 : 1));
+
+    if (mounted) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const WebViewScreen()),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
-      ),
+      backgroundColor: Colors.white,
       body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text(
-              'You have pushed the button this many times:',
+        child: _isFirstLaunch
+            ? Container(
+                width: 120,
+                height: 120,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.blue, width: 4),
+                ),
+                child: ClipOval(
+                  child: Image.asset(
+                    'assets/ic_launcher.png',
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              )
+            : const CircularProgressIndicator(),
+      ),
+    );
+  }
+}
+
+class WebViewScreen extends StatefulWidget {
+  const WebViewScreen({super.key});
+
+  @override
+  State<WebViewScreen> createState() => _WebViewScreenState();
+}
+
+class _WebViewScreenState extends State<WebViewScreen> {
+  InAppWebViewController? _webViewController;
+  final String _url = 'https://app.gbsolux.com/login';
+  bool _isLoading = true;
+  bool _isInitialLoad = true;
+  static const platform = MethodChannel('com.example.gbsoluxmobile/file');
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: Stack(
+          children: [
+            InAppWebView(
+              initialUrlRequest: URLRequest(url: WebUri(_url)),
+              initialOptions: InAppWebViewGroupOptions(
+                crossPlatform: InAppWebViewOptions(
+                  javaScriptEnabled: true,
+                  useShouldOverrideUrlLoading: true,
+                  useOnDownloadStart: true,
+                  useOnLoadResource: true,
+                  cacheEnabled: true,
+                  clearCache: false,
+                ),
+                android: AndroidInAppWebViewOptions(
+                  useHybridComposition: true,
+                  allowFileAccess: true,
+                  allowContentAccess: true,
+                ),
+              ),
+              onWebViewCreated: (controller) {
+                _webViewController = controller;
+                // Sync cookies if needed
+                _syncCookies();
+                // Inject JavaScript for file uploads
+                _injectFileUploadScript();
+              },
+              onLoadStart: (controller, url) {
+                if (_isInitialLoad) {
+                  setState(() {
+                    _isLoading = true;
+                  });
+                }
+              },
+              onLoadStop: (controller, url) {
+                setState(() {
+                  _isLoading = false;
+                  _isInitialLoad = false;
+                });
+              },
+              onDownloadStartRequest: (controller, downloadStartRequest) async {
+                // Handle downloads
+                await _handleDownload(downloadStartRequest);
+              },
+              onConsoleMessage: (controller, consoleMessage) {
+                print("WebView Console: ${consoleMessage.message}");
+              },
+              onReceivedServerTrustAuthRequest: (controller, challenge) async {
+                return ServerTrustAuthResponse(action: ServerTrustAuthResponseAction.PROCEED);
+              },
+              shouldOverrideUrlLoading: (controller, navigationAction) async {
+                var uri = navigationAction.request.url!;
+
+                // Intercept file downloads and previews to handle them within the app
+                if (_shouldInterceptUrl(uri.toString())) {
+                  try {
+                    await platform.invokeMethod('downloadFile', {
+                      'url': uri.toString(),
+                      'filename': _extractFilename(uri.toString()),
+                      'mimeType': _guessMimeType(uri.toString()),
+                    });
+                    return NavigationActionPolicy.CANCEL;
+                  } on PlatformException catch (e) {
+                    print("Failed to handle file: '${e.message}'.");
+                    return NavigationActionPolicy.ALLOW;
+                  }
+                }
+
+                // Handle external links or OAuth if needed
+                return NavigationActionPolicy.ALLOW;
+              },
             ),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
+            if (_isLoading)
+              Container(
+                color: Colors.white,
+                child: const Center(
+                  child: CircularProgressIndicator(),
+                ),
+              ),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
     );
+  }
+
+  Future<void> _syncCookies() async {
+    // Sync cookies for authentication
+    final cookieManager = CookieManager.instance();
+    // Example: Set session cookie if stored
+    const storage = FlutterSecureStorage();
+    final sessionCookie = await storage.read(key: 'session_cookie');
+    if (sessionCookie != null) {
+      await cookieManager.setCookie(
+        url: WebUri(_url),
+        name: 'session',
+        value: sessionCookie,
+      );
+    }
+  }
+
+  Future<List<String>> _showFileChooser() async {
+    final picker = ImagePicker();
+    final pickedFile = await showModalBottomSheet<XFile?>(
+      context: context,
+      builder: (context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.photo_library),
+            title: const Text('Galerie'),
+            onTap: () async {
+              final file = await picker.pickImage(source: ImageSource.gallery);
+              Navigator.of(context).pop(file);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.camera_alt),
+            title: const Text('Caméra'),
+            onTap: () async {
+              final file = await picker.pickImage(source: ImageSource.camera);
+              Navigator.of(context).pop(file);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.file_present),
+            title: const Text('Fichier'),
+            onTap: () async {
+              final result = await FilePicker.platform.pickFiles();
+              Navigator.of(context).pop(result?.files.single.xFile);
+            },
+          ),
+        ],
+      ),
+    );
+
+    if (pickedFile != null) {
+      return [pickedFile.path];
+    }
+    return [];
+  }
+
+  Future<void> _handleDownload(DownloadStartRequest downloadStartRequest) async {
+    try {
+      await platform.invokeMethod('downloadFile', {
+        'url': downloadStartRequest.url.toString(),
+        'filename': downloadStartRequest.suggestedFilename ?? 'download',
+        'mimeType': downloadStartRequest.mimeType,
+      });
+    } on PlatformException catch (e) {
+      print("Failed to download file: '${e.message}'.");
+    }
+  }
+
+  Future<void> _injectFileUploadScript() async {
+    const script = '''
+      (function() {
+        function overrideFileInput() {
+          var inputs = document.querySelectorAll('input[type="file"]');
+          for (var i = 0; i < inputs.length; i++) {
+            inputs[i].addEventListener('click', function(e) {
+              e.preventDefault();
+              console.log('File input clicked, opening native chooser');
+              // Send message to Flutter
+              window.flutter_inappwebview.postMessage('fileChooser');
+            });
+          }
+        }
+
+        // Override on page load
+        overrideFileInput();
+
+        // Override on dynamic content changes
+        var observer = new MutationObserver(function(mutations) {
+          mutations.forEach(function(mutation) {
+            if (mutation.type === 'childList') {
+              overrideFileInput();
+            }
+          });
+        });
+
+        observer.observe(document.body, {
+          childList: true,
+          subtree: true
+        });
+      })();
+    ''';
+
+    try {
+      await _webViewController?.evaluateJavascript(source: script);
+    } catch (e) {
+      print("Failed to inject file upload script: $e");
+    }
+  }
+
+  // Helper method to determine if URL should be intercepted for file handling
+  bool _shouldInterceptUrl(String url) {
+    // Intercept URLs that are likely file downloads or previews
+    // Note: PDF-generating pages are not intercepted to allow WebView to load them and trigger proper downloads
+    return url.contains('.jpg') ||
+           url.contains('.jpeg') ||
+           url.contains('.png') ||
+           url.contains('.doc') ||
+           url.contains('.docx') ||
+           url.contains('.xls') ||
+           url.contains('.xlsx');
+  }
+
+  // Extract filename from URL
+  String _extractFilename(String url) {
+    try {
+      final uri = Uri.parse(url);
+      final pathSegments = uri.pathSegments;
+      if (pathSegments.isNotEmpty) {
+        return pathSegments.last;
+      }
+    } catch (e) {
+      print("Error extracting filename: $e");
+    }
+    return 'download';
+  }
+
+  // Guess MIME type based on file extension
+  String _guessMimeType(String url) {
+    final extension = url.split('.').last.toLowerCase();
+    switch (extension) {
+      case 'pdf':
+        return 'application/pdf';
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'png':
+        return 'image/png';
+      case 'doc':
+        return 'application/msword';
+      case 'docx':
+        return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      case 'xls':
+        return 'application/vnd.ms-excel';
+      case 'xlsx':
+        return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      default:
+        return 'application/octet-stream';
+    }
   }
 }
